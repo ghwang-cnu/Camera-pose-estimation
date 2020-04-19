@@ -286,6 +286,9 @@ let MATRIX_VECTOR_SUB_COMPONENT = prove
 (* The definition of the skew-symmetric matrix.                              *)
 (* ------------------------------------------------------------------------- *)    
 
+let skew_sym_matrix = new_definition
+    `skew_sym_matrix A <=> transp A = -- A`;;
+
 let vec3_2_ssm = new_definition
     `!a:real^3. (vec3_2_ssm:real^3->real^3^3) a =
      vector [vector[&0; --a$3; a$2];
@@ -297,8 +300,11 @@ let CROSS_SSM = prove
      REWRITE_TAC[vec3_2_ssm] THEN MAT3_TAC);;
 
 (* ------------------------------------------------------------------------- *)
-(* The tranformation: 3d-vector a--> a * transp a                            *)
+(* The projection matrix and the tranformation: 3d-vector a--> a * transp a                            *)
 (* ------------------------------------------------------------------------- *)     
+
+let proj_matrix = new_definition
+    `proj_matrix A <=> transp A = A /\ (!n. n > 0 ==> A matrix_pow n = A)`;;
 
 let vec3_vtrans = new_definition
     `!a:real^3.(vec3_vtrans:real^3 ->real^3^3) a=
@@ -307,7 +313,7 @@ let vec3_vtrans = new_definition
              vector [a$1*a$3; a$3*a$2; a$3*a$3]]:real^3^3`;;             
 
 (* ------------------------------------------------------------------------- *)
-(* The properties of the skew-symmetric matrix.                              *)
+(* The properties of the skew-symmetric matrix and projection matrix.                              *)
 (* ------------------------------------------------------------------------- *)
              
 let VEC3_NORM_EQ_1 = prove
@@ -325,6 +331,29 @@ let VEC3_SSM_CMUL = prove
 let VEC3_SSM_TRANSP = prove
     (`!w. transp(vec3_2_ssm w) = -- (vec3_2_ssm w)`,
     SIMP_TAC[CART_EQ;LAMBDA_BETA;FORALL_3;DIMINDEX_3;VECTOR_3;MATRIX_NEG_COMPONENT;VECTOR_NEG_COMPONENT;transp;vec3_2_ssm] THEN ARITH_TAC);;
+
+let VEC3_VTRANS_TRANSP = prove
+    (`!a. transp(vec3_vtrans a) = vec3_vtrans a`,
+     SIMP_TAC[CART_EQ;LAMBDA_BETA;FORALL_3;DIMINDEX_3;VECTOR_3;transp;vec3_vtrans] THEN ARITH_TAC);;
+    
+let VEC3_2_SSM = prove
+    (`!a:real^3. skew_sym_matrix (vec3_2_ssm a)`,
+    SIMP_TAC[skew_sym_matrix;VEC3_SSM_TRANSP]);;
+
+let VEC3_VTRANS_SQUARE = prove
+     (`!a. norm a = &1 ==> vec3_vtrans a ** vec3_vtrans a = vec3_vtrans a`,
+     SIMP_TAC[CART_EQ;LAMBDA_BETA;FORALL_3;DIMINDEX_3;VECTOR_3;matrix_mul;vec3_vtrans;SUM_3;NORM_EQ_1;DOT_3] THEN 
+     SIMP_TAC[GSYM REAL_MUL_ASSOC] THEN
+     ONCE_REWRITE_TAC[REAL_ARITH `(a:real^3)$1 * b *  (a:real^3)$1* c = ((a:real^3)$1 * (a:real^3)$1)* b * c`] THEN
+     SIMP_TAC[REAL_ARITH `a + b + c = &1 <=> a = &1 - b - c`] THEN ARITH_TAC);;
+
+let VEC3_VTRANS = prove
+    (`!a:real^3. norm a = &1 ==> proj_matrix (vec3_vtrans a)`,
+     SIMP_TAC[proj_matrix;VEC3_VTRANS_TRANSP] THEN
+     GEN_TAC THEN STRIP_TAC THEN INDUCT_TAC THENL [ARITH_TAC;ALL_TAC] THEN
+     SIMP_TAC[ARITH_RULE `SUC n > 0 <=> n = 0 \/ n > 0`] THEN STRIP_TAC THENL
+     [ASM_SIMP_TAC[GSYM (num_CONV `1`);MATRIX_POW_1];ALL_TAC] THEN
+     ASM_SIMP_TAC[matrix_pow;VEC3_VTRANS_SQUARE]);;
     
 let VEC3_SSM_TRANSP_SUB = prove
     (`!w. transp(mat 1 - vec3_2_ssm w) = mat 1 + vec3_2_ssm w`,
@@ -422,6 +451,11 @@ let SSM_POW_N = prove
 (* ------------------------------------------------------------------------- *)
 (* The properties of multiple summation                                      *)
 (* ------------------------------------------------------------------------- *)
+
+let SUM_6 = prove
+ (`!t. sum(1..6) t = t(1) + t(2) + t(3) + t(4)+ t(5)+ t(6)`,
+  SIMP_TAC[num_CONV `6`;num_CONV `5`;num_CONV `4`; num_CONV `3`; num_CONV `2`; SUM_CLAUSES_NUMSEG] THEN
+  REWRITE_TAC[SUM_SING_NUMSEG; ARITH; REAL_ADD_ASSOC]);;
    
 let SUM_SUM_DELTA = prove
     (`!s1 s2 a1 a2. sum s1 (\x1. if x1 = a1:A then (sum s2 (\x2. if x2 = a2:A then b else &0)) else &0) 
@@ -1482,6 +1516,19 @@ let ROTATION_RELATION_RODRIGUES_PARAMETER = prove
 (* Least square                                                              *)
 (* ------------------------------------------------------------------------- *)
 
+let MIN_LEAST_SQUARE = 
+(`!A:real^N^M x y:real^M.  transp A ** (A ** x - y) = vec 0 ==> (!k. norm(A ** x - y) <= norm(A ** k - y))`,
+REPEAT GEN_TAC THEN
+GEN_REWRITE_TAC (RAND_CONV o ONCE_DEPTH_CONV) [(ISPEC `((A:real^N^M) ** (x:real^N))` (VECTOR_ARITH `!x y k:real^M. k - y = (x - y) + (k - x)`))] THEN
+SIMP_TAC[VECTOR_SUB_REFL;VECTOR_ADD_RID] THEN
+SIMP_TAC[GSYM MATRIX_VECTOR_MUL_SUB_LDISTRIB;NORM_LE] THEN
+SIMP_TAC[DOT_LADD;DOT_RADD] THEN 
+SIMP_TAC[REAL_ARITH `a <= (a + b) + c + d <=> &0 <= b + c + d`] THEN
+SIMP_TAC[MESON [REAL_MUL_2;REAL_ADD_AC;DOT_SYM] `a dot b + b dot a + c = &2 * (a dot b) + c`] THEN
+REPEAT STRIP_TAC THEN
+MATCH_MP_TAC REAL_LE_ADD THEN SIMP_TAC[DOT_POS_LE] THEN 
+ASM_SIMP_TAC[GSYM DOT_MATRIX_TRANSP_LMUL;DOT_LZERO;REAL_MUL_RZERO;REAL_LE_REFL]);;
+
 let LEAST_SQUARE_HAS_SOLUTION = prove
     (`!A:real^N^M y:real^M. (?x. A ** x = y) <=> (A ** matrix_inv A ** y = y)`,
     REPEAT GEN_TAC THEN EQ_TAC THEN STRIP_TAC THENL
@@ -1748,7 +1795,7 @@ let IS_GENERAL_SOLUTION_RODRIGUES_PARAMETER = prove
         A = pastecart (vec3_2_ssm(f(1))) (vec3_2_ssm(f(2))) /\
         B = pastecart (g(1)) (g(2)) /\
         A ** matrix_inv A ** B = B /\
-        (?z. rodrigues_parameter a w = matrix_inv A ** B + (mat 1 - matrix_inv A ** A) ** z) ==>
+        (!z. rodrigues_parameter a w = matrix_inv A ** B + (mat 1 - matrix_inv A ** A) ** z) ==>
        (!i. 1 <= i /\ i <= 2 ==> v' i = rotate_vector a w (v i))`,
     let lem = MESON [INVERTIBLE_MAT_SUB_SSM;MATRIX_VECTOR_MUL_LCANCEL;EQ_SYM_EQ] `b = c <=> (mat 1 - vec3_2_ssm (rodrigues_parameter a w)) ** b = (mat 1 - vec3_2_ssm (rodrigues_parameter a w)) ** c` in
     SIMP_TAC[FORALL_2] THEN REPEAT GEN_TAC THEN
@@ -1798,7 +1845,7 @@ let IS_UNIQUE_SOLUTION_RODRIGUES_PARAMETER = prove
     FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN
     SIMP_TAC[MATRIX_INV_COVARIANCE] THEN
     SIMP_TAC[(MESON [MATRIX_VECTOR_MUL_ASSOC;MATRIX_MUL_ASSOC] `!A:real^N^M B:real^P^N C:real^Q^P D:real^K^Q x:real^K. A ** (B ** C) ** D ** x = (A ** B ** C ** D) ** x`)] THEN
-    SIMP_TAC[GSYM MATRIX_TRANSP_MUL;SYMMETRIC_MATRIX_INV_RMUL;MATRIX_INV_MUL_OUTER] THEN
+    SIMP_TAC[GSYM MATRIX_TRANSP_MUL;MATRIX_INV_MUL_OUTER;(REWRITE_RULE [symmetric_matrix] SYMMETRIC_MATRIX_INV_RMUL)] THEN
     ASM_SIMP_TAC[GSYM MATRIX_VECTOR_MUL_ASSOC]);;
     
  
